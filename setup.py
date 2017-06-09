@@ -11,12 +11,12 @@ setup(name='ReGrid',
       setup_requires=[
         'setuptools>=18.0',
       ],
-      build_requires=['cython'],
       install_requires=[
           'matplotlib',
           'scipy',
           'numpy',
-          'cmocean'
+          'cmocean',
+#          'vtk'
       ],
       packages=['regrid', 'regrid.flowgrid'],
       license=['GPL 4.0'],
