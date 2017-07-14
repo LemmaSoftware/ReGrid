@@ -36,12 +36,13 @@ class SUTRA( FlowGrid ):
         super(SUTRA,self).__init__()
         nx,ny,nz = 0,0,0 
 
-    def loadNodes( self, fname, nx, ny, nz ):
+    def loadNodes( self, fname, nx, ny, nz, ve=1 ):
         """ Reads in the points of the grid, ususally in a file called nodewise
             fname = nodes file 
             nx = number of cells in the easting(x) direction 
             ny = number of cells in the northing (y) direction 
             nz = number of cells in depth, positive up 
+            ve = vertical exaggeration, default is 1 (none)
             This method results in the generation of a VtkStructuredGrid
         """
         self.nx = nx
@@ -61,7 +62,7 @@ class SUTRA( FlowGrid ):
                 for ix in range(nx):
                     vtk_points.InsertNextPoint( self.points[ix,iy,iz][0],\
                                                 self.points[ix,iy,iz][1],\
-                                                self.points[ix,iy,iz][2]  )
+                                           ve * self.points[ix,iy,iz][2]  )
         self.Grid.SetPoints(vtk_points)
 
     def loadNodesConnections( self, nodes, connections ):
@@ -128,4 +129,28 @@ class SUTRA( FlowGrid ):
             vphi.InsertNextTuple1( K[5] )
         self.Grid.GetPointData().AddArray(vphi)
 
+
+    def readPressure(self, fname, ts=2, label="$P$"):
+        nnodes = self.nx*self.ny*self.nz
+        P = np.loadtxt( fname, comments="#" )[ts*nnodes:(ts+1)*nnodes,:]
+        C = np.loadtxt( fname, comments="#" )[ts*nnodes:(ts+1)*nnodes,:]
+        nr, nc = np.shape(P)
+        if self.GridType == "vtkStructuredGrid":
+            # Sutra and VTK use opposite ordering 
+            P = np.reshape( P, (self.nx, self.ny, self.nz, np.shape(P)[1]))
+            P = np.reshape( P, (nr, nc), order='F' )
+            C = np.reshape( C, (self.nx, self.ny, self.nz, np.shape(C)[1]))
+            C = np.reshape( C, (nr, nc), order='F' )
+        vP = vtk.vtkDoubleArray()
+        vP.SetName(label)
+        
+        vC = vtk.vtkDoubleArray()
+        vC.SetName("Concentration")
+
+        for ik in range( nnodes ):
+            vP.InsertNextTuple1( P[ik, 3] )
+            vC.InsertNextTuple1( C[ik, 4] )
+            #vP.InsertNextTuple1( P[2*nnodes+ik, 3] )
+        self.Grid.GetPointData().AddArray(vP)
+        self.Grid.GetPointData().AddArray(vC)
 
