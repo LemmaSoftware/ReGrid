@@ -1,18 +1,26 @@
+import os, io
 import numpy as np
+from datetime import * 
+import getpass 
+
+from mpl_toolkits.mplot3d import axes3d
+from matplotlib.ticker import MaxNLocator
 import matplotlib.pyplot as plt 
-from scipy.spatial import ConvexHull
-import os
+
 import vtk
 from vtk.util.numpy_support import numpy_to_vtk
 
+f2m = 0.3048 # ft to m
 
-class FlowGrid():
+class FlowGrid( object ):
     def __init__( self ):
         pass
     
     def exportVTK(self, fname):
-        """ Saves the SUTRA grid as a VTK structured grid file (.vts)
-            fname = the filename it will be saved at, if no extension is given, .vts is appended 
+        """ Saves the SUTRA grid as a VTK file, either a VTKStructuredGrid (.vts)
+            or a VTKUnstructuredGrid (.vtu) depending on mesh type. 
+            fname = the filename it will be saved at, if no extension is given, 
+            .vts is appended 
         """
         filename, ext = os.path.splitext(fname)
         if self.GridType == "vtkStructuredGrid":
@@ -27,6 +35,365 @@ class FlowGrid():
             sWrite.Write()
         else:
             print( "Grid type is not recognized" )
+
+    def exportECL(self, fname):
+        """ Saves the file as an ECLIPSE grid 
+        """
+        filename, ext = os.path.splitext(fname)
+        if self.GridType == "vtkStructuredGrid":
+            with io.open(filename+".GRDECL", 'w', newline='\r\n') as f:
+                f.write('-- Generated [\n')
+                f.write('-- Format      : ECLIPSE keywords (grid geometry and properties) (ASCII)\n')
+                #f.write('-- Exported by : Petrel 2013.7 (64-bit) Schlumberger\n'
+                f.write('-- Exported by : ReGrid\n')
+                f.write('-- User name   : ' + getpass.getuser() + "\n")
+                f.write('-- Date        : ' + datetime.now().strftime("%A, %B %d %Y %H:%M:%S") + "\n")
+                f.write('-- Project     : ' + "ReGrid project\n")
+                f.write('-- Grid        : ' + "Description\n")
+                f.write('-- Generated ]\n\n')
+
+                f.write('SPECGRID                               -- Generated : Petrel\n')
+                f.write('  %i %i %i 1 F /\n\n' %(self.ne, self.nn, self.nz) )
+                f.write('COORDSYS                               -- Generated : Petrel\n')
+                f.write('  1 4 /\n\n') # what is this line?
+
+                f.write('COORD                                  -- Generated : Petrel\n')
+                #for ix in range(self.ne): 
+                for ix in range(1): 
+                    #for iy in range(self.nn):
+                    for iy in range(1):
+                        cell = self.Grid.GetCell(ix, 0, 0);
+                        print(cell.GetPoints().GetPoint(0)) 
+                        print(cell.GetPoints().GetPoint(1)) 
+                        print(cell.GetPoints().GetPoint(2)) 
+                        print(cell.GetPoints().GetPoint(3)) 
+                        print(cell.GetPoints().GetPoint(4)) 
+                        print(cell.GetPoints().GetPoint(5)) 
+                        print(cell.GetPoints().GetPoint(6)) 
+                        print(cell.GetPoints().GetPoint(7)) 
+
+        else:
+            print("Only structured grids can be converted to ECLIPSE files")    
+
+class GRDECL( FlowGrid ):
+    """ GRDECL processes Schlumberger ECLIPSE files
+    """
+    def __init__( self ):
+        super(GRDECL,self).__init__()
+        nx,ny,nz = 0,0,0 
+
+    def loadNodes(self, fname):
+        """
+            Reads I, J(max), K
+                  iterates through I, then decriments J, increments K
+                  I = easting
+                  J = northing
+                  K = depth or elevation???
+        """
+        with open(fname, "r") as fp:
+
+            # Read in the header
+            for line in fp:
+                item = line.split()
+                if len(item) > 0:
+                    if item[0] == "SPECGRID":
+                        self.SPECGRID = np.array(fp.readline().split()[0:3], dtype=int)
+                    if item[0] == "COORDSYS":
+                        self.COORDSYS = fp.readline().split() 
+                    if item[0] == "COORD":
+                        break
+
+            # Read in the coordinates
+            self.coords = []
+            for line in fp:
+                if line.split()[-1] != "/":
+                    self.coords += line.split() 
+                else:
+                    self.coords +=  line.split()[0:-1]
+                    break
+
+            # Read in ZCORN
+            self.zcorn = []
+            for line in fp:
+                item = line.split()
+                if len(item) > 0:
+                    if item[0] == "ZCORN":
+                        for line in fp:
+                            if line.split()[-1] != "/":
+                                self.zcorn += line.split()
+                            else:
+                                self.zcorn += line.split()[0:-1]
+                                break
+                if len(self.zcorn) > 0:
+                    break
+
+            # Read in (in)active cells
+            self.active = []
+            for line in fp:
+                item = line.split()
+                if len(item) > 0:
+                    if item[0] == "ACTNUM":
+                        for line in fp:
+                            if line.split()[-1] != "/":
+                                self.active += line.split()
+                            else:
+                                self.active += line.split()[0:-1]
+                                break
+ 
+        self.coords = np.array(self.coords, dtype=float)
+
+                                   # In Petrel...
+        self.ne = self.SPECGRID[0] # x  i
+        self.nn = self.SPECGRID[1] # y  j
+        self.nz = self.SPECGRID[2] # z  k
+
+        # build grid
+        self.buildGrid(plot=False)
+        self.buildActiveCells(plot=False)
+        self.buildZGrid(plot=False)
+        self.calculateVolumes(plot=False)
+
+        # Convert to VTK 
+        self.GridType = "vtkStructuredGrid"
+        self.Grid = vtk.vtkStructuredGrid()
+        self.Grid.SetDimensions(self.ne+1, self.nn+1, self.nz+1)    
+        vtk_points = vtk.vtkPoints()
+        ve = 1.
+
+        for iz in range(self.nz):
+            if iz == 0:
+                for iy in range(self.nn+1):
+                    for ix in range(self.ne+1):
+                        vtk_points.InsertNextPoint( self.X0[ix,iy], \
+                                                    self.Y0[ix,iy], \
+                                               ve * self.ZZT[iz][ix,iy] )
+            for iy in range(self.nn+1):
+                for ix in range(self.ne+1):
+                    vtk_points.InsertNextPoint( self.X0[ix,iy], \
+                                                self.Y0[ix,iy], \
+                                           ve * self.ZZB[iz][ix,iy] )
+        self.Grid.SetPoints(vtk_points)
+
+    def buildGrid(self, plot=False):
+        """
+        Topology of COORD mesh, only describes first layer..
+         
+                  8--------10-------12-------14
+                 /|       /|       /|       /|
+                / |      / |      / |      / |
+               0--------2--------4--------6  |
+               |  9-----|--11----|--13----|--15
+               | /      | /      | /      | / 
+               |/       |/       |/       |/  
+               1--------3--------5--------7            7  -->   (2*(NE+1))
+                                                      15  -->   (2*(NE+1)*(NN+1))
+        """
+        
+        print ("Constructing grid")
+        #print("Grid dims", self.ne, self.nn, self.nz)
+        #print("Num points", 2*(self.ne+1)*(self.nn+1)*3, len(self.coords))
+
+        # number of edges
+        self.ndx = self.ne+1 
+        self.ndy = self.nn+1              
+        self.ndz = self.nz+1              
+ 
+        # extract the triplets
+        self.points = {}
+        self.points["e"] = self.coords[0::3] 
+        self.points["n"] = self.coords[1::3] 
+        self.points["z"] = self.coords[2::3]
+
+        # Here are the coordinates
+        self.X0 = np.reshape(self.points["e"][0::2] , (self.ndx,self.ndy), order="F")
+        self.Y0 = np.reshape(self.points["n"][0::2] , (self.ndx,self.ndy), order="F")
+        self.Z0 = np.reshape(self.points["z"][0::2] , (self.ndx,self.ndy), order="F")
+        
+        self.X1 = np.reshape(self.points["e"][1::2] , (self.ndx,self.ndy), order="F")
+        self.Y1 = np.reshape(self.points["n"][1::2] , (self.ndx,self.ndy), order="F")
+        self.Z1 = np.reshape(self.points["z"][1::2] , (self.ndx,self.ndy), order="F")
+
+        # visualize
+        if plot:
+            print("plotting")
+            fig = plt.figure()
+            ax = fig.add_subplot(111, projection='3d')
+            ax.plot_wireframe(f2m*self.X0, f2m*self.Y0, f2m*self.Z0, rstride=1, cstride=1)
+            ax.plot_wireframe(f2m*self.X1, f2m*self.Y1, f2m*self.Z1, rstride=1, cstride=1)
+            plt.show()
+
+    def buildZGrid(self, plot=False):
+        """ 
+            Petrel provides the ZCORN in a truly arcane ordering--it's awful--and really, the programmers 
+            deserve a special place in hell for doing this. The ordering is as follows, for a given plane:
+             
+             29    36  30   37 31    38 32    39 33    40 34    41 35    42
+              _______  _______  ______  _______  _______  _______  _______
+             /      / /      / /     / /      / /      / /      / /      /|
+            /      / /      / /     / /      / /      / /      / /      / |
+           00----07 01----08 02----09 03----10 04----11 05----12 06----13 /
+            |  A  | |  B   | |   C  | |   D  | |   E  | |  F   | |   G  |/
+           14----21 15----22 16----23 17----24 18----25 19----26 20----28
+           
+            
+            This pattern is then repeated for each depth layer, it isn't that clear, but my ASCII art skills
+            are already sufficiently challenged. 
+ 
+        """
+
+        print("Constructing Z corners")
+
+        #self.zcorn = np.array(self.zcorn, dtype=float)
+        #temp = np.zeros( ((self.ne+1)*(self.nn+1)*self.nz) )
+        temp = []
+        count = 0
+        for item in self.zcorn:
+            if "*" in item:
+                ct = (int)(item.split("*")[0])
+                vl = (float)(item.split("*")[1])
+                temp += np.tile(vl, ct).tolist()
+                count += ct
+            else:
+                temp += [ (float)(item) ]
+                count += 1
+        
+
+        layers = np.resize(temp, (8, self.ne*self.nn*self.nz ))
+        """
+        plt.plot(newtemp[0,:])                    # TOP     0    0
+        plt.plot(newtemp[1,:])       # SAME --    # BOTTOM  0    1
+        #plt.plot(newtemp[2,:])      # SAME --    # TOP     1    2
+
+        plt.plot(newtemp[3,:])       # SAME --    # BOTTOM  1    3
+        #plt.plot(newtemp[4,:])      # SAME --    # TOP     2    4
+        
+        plt.plot(newtemp[5,:])       # SAME --    # BOTTOM  2    5
+        #plt.plot(newtemp[6,:])      # SAME --    # TOP     3    6
+        plt.plot(newtemp[7,:])                    # BOTTOM  3    7
+        """
+        self.ZZT = {} # zztop ha ha
+        self.ZZB = {}
+        for ilay in range(self.nz):
+            self.ZZT[ilay] = np.zeros( (self.ndx, self.ndy) )
+            self.ZZB[ilay] = np.zeros( (self.ndx, self.ndy) )
+            iis = 0
+            #plt.plot(layers[ilay*2])
+            for iin in range(self.nn):
+                nears = {}
+                fars = {}
+                bnears = {}
+                bfars = {}
+                for iif in range(2): 
+                    # top 
+                    nears[iif] = layers[ilay*2][iis:iis+2*self.ne][0::2].tolist()
+                    fars[iif]  = layers[ilay*2][iis:iis+2*self.ne][1::2].tolist()
+                    nears[iif].append(fars[iif][-1])
+                    fars[iif] = [nears[iif][0]] + fars[iif]
+                    # bottom  
+                    bnears[iif] = layers[ilay*2+1][iis:iis+2*self.ne][0::2].tolist()
+                    bfars[iif]  = layers[ilay*2+1][iis:iis+2*self.ne][1::2].tolist()
+                    bnears[iif].append(bfars[iif][-1])
+                    bfars[iif] = [bnears[iif][0]] + bfars[iif]
+                    # 
+                    iis += 2*self.ne
+
+                self.ZZT[ilay][:,iin] = nears[0]  
+                self.ZZB[ilay][:,iin] = bnears[0] 
+                # NaN mask for visualizing, but can be sort of a pain to deal with
+                #imask = np.nonzero( 1-self.ActiveCells[:,iin,ilay] )
+                #self.ZZT[ilay][:,iin][1::][imask] = np.nan
+                #self.ZZB[ilay][:,iin][1::][imask] = np.nan
+                #if self.ActiveCells[0,iin,ilay] == 0:
+                    #self.ZZT[ilay][:,iin][0]  = np.nan 
+                    #self.ZZB[ilay][:,iin][0]  = np.nan 
+                if iin == self.nn-1: 
+                    self.ZZT[ilay][:,iin+1] = fars[0]
+                    self.ZZB[ilay][:,iin+1] = bfars[0]
+                    # NaN mask
+                    #self.ZZT[ilay][:,iin+1][1::][imask] = np.nan
+                    #self.ZZB[ilay][:,iin+1][1::][imask] = np.nan
+                    #if self.ActiveCells[0,iin,ilay] == 0:
+                    #    self.ZZT[ilay][:,iin+1][0]  = np.nan 
+                    #    self.ZZB[ilay][:,iin+1][0]  = np.nan 
+ 
+        # visualize
+        if plot:
+            fig = plt.figure()
+            ax = fig.add_subplot(111, projection='3d')
+            #ax.plot_wireframe( self.X0, self.Y0, self.Z0, rstride=1, cstride=1)
+            
+            ax.plot_wireframe( self.X0, self.Y0, self.ZZT[0], rstride=1, cstride=1, color="blue")
+            #ax.plot_wireframe( self.X0, self.Y0, self.ZZT[1], rstride=1, cstride=1, color="blue")
+            #ax.plot_wireframe( self.X0, self.Y0, self.ZZT[2], rstride=1, cstride=1, color="blue")
+            #ax.plot_wireframe( self.X0, self.Y0, self.ZZT[3], rstride=1, cstride=1, color="blue")
+            
+            #ax.plot_wireframe( self.X0, self.Y0, self.ZZB[3], rstride=1, cstride=1, color="green")
+            
+            plt.gca().set_xlim( np.min(self.X0), np.max(self.X0) )
+            plt.gca().set_ylim( np.max(self.Y0), np.min(self.Y0) )
+            #plt.gca().set_zlim( np.max(self.ZZB[3]),  np.min(self.ZZT[0]) )
+            plt.gca().set_zlim( 5000, 4000 )
+            plt.savefig("mesh.png")
+            plt.show()
+
+    def buildActiveCells(self, plot=False):
+
+        print("Constructing active cells")
+        self.ActiveCells = np.zeros( (self.ne*self.nn*self.nz), dtype=int )
+
+        count = 0
+        for item in self.active:
+            if "*" in item:
+                ct = (int)(item.split("*")[0])
+                vl = (int)(item.split("*")[1])
+                self.ActiveCells[count:count+ct] = vl
+                count += ct
+            else:
+                self.ActiveCells[count] = (int)(item)
+                count += 1 
+        
+        self.ActiveCells = np.reshape(self.ActiveCells, (self.ne, self.nn, self.nz), order="F")
+ 
+        if plot:
+            plt.pcolor(self.X0.T, self.Y0.T, self.ActiveCells[:,:,0].T, edgecolors='w', linewidths=.1)
+            plt.xlabel("easting")
+            plt.ylabel("northing")
+            plt.gca().set_xlim( np.min(self.X0), np.max(self.X0) )
+            plt.gca().set_ylim( np.max(self.Y0), np.min(self.Y0) )
+            plt.gca().xaxis.tick_top()
+            plt.gca().xaxis.set_label_position("top")
+            plt.show()
+
+    def calculateVolumes(self, plot=False):
+        # Iterate over cells, assert that we are dealing with parallelpiped, if so
+        #             | u1    u2   u3 |
+        #    A = det  | v1    v2   v3 |
+        #             | w1    w2   w3 |
+        #self.Volumes = 10000*np.random.normal(0,1, (self.ne, self.nn, self.nz) )
+        self.Volumes = np.zeros((self.ne, self.nn, self.nz) )
+        for iiz in range(self.nz):
+            for iie in range(self.ne):
+                for iin in range(self.nn):
+
+                    if self.ActiveCells[iie, iin, iiz]:
+
+                        u = np.array( (self.X0[iie  , iin  ], self.Y0[iie  , iin  ], self.ZZT[iiz][iie, iin]) ) - \
+                            np.array( (self.X0[iie+1, iin  ], self.Y0[iie+1, iin  ], self.ZZT[iiz][iie, iin]) )
+
+                        v = np.array( (self.X0[iie  , iin  ], self.Y0[iie  , iin  ], self.ZZT[iiz][iie, iin]) ) - \
+                            np.array( (self.X0[iie  , iin+1], self.Y0[iie  , iin+1], self.ZZT[iiz][iie, iin]) )
+
+                        w = np.array( (self.X0[iie  , iin  ], self.Y0[iie  , iin  ], self.ZZT[iiz][iie, iin]) ) - \
+                            np.array( (self.X0[iie  , iin  ], self.Y0[iie  , iin  ], self.ZZB[iiz][iie, iin]) )
+                        if np.any(u!=u) or  np.any(v!=v) or np.any(w!=w):
+                            print("NAN!", iie, iin, iiz)
+                            exit()
+                        V = np.linalg.det( np.array((f2m*u, f2m*v, f2m*w)) )
+                        self.Volumes[iie, iin, iiz] = np.abs(V) # in m^3 
+                        
+        vr =  ((3./(4.*np.pi))*self.Volumes)**(1./3.) # virtual radius, taking into account porosity
+
+        print("Total grid volume: "+ str(np.sum(self.Volumes)) +  " m^3")
 
 
 class SUTRA( FlowGrid ):
