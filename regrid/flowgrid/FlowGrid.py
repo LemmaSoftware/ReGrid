@@ -10,6 +10,9 @@ import matplotlib.pyplot as plt
 import vtk
 from vtk.util.numpy_support import numpy_to_vtk
 
+import pkg_resources  # part of setuptools
+version = pkg_resources.require("ReGrid")[0].version
+
 f2m = 0.3048 # ft to m
 
 class FlowGrid( object ):
@@ -36,6 +39,16 @@ class FlowGrid( object ):
         else:
             print( "Grid type is not recognized" )
 
+    def printCOORDS(self, f, p, fstr):
+        MAXL = 130
+        for point in p:
+            up = " %2.2f" %(point)
+            if len(fstr) + len(up) > MAXL:
+                f.write(fstr + "\n")
+                fstr = " "
+            fstr += up 
+        return fstr
+
     def exportECL(self, fname):
         """ Saves the file as an ECLIPSE grid 
         """
@@ -45,33 +58,67 @@ class FlowGrid( object ):
                 f.write('-- Generated [\n')
                 f.write('-- Format      : ECLIPSE keywords (grid geometry and properties) (ASCII)\n')
                 #f.write('-- Exported by : Petrel 2013.7 (64-bit) Schlumberger\n'
-                f.write('-- Exported by : ReGrid\n')
+                f.write('-- Exported by : ReGrid v.' + version + "\n")
                 f.write('-- User name   : ' + getpass.getuser() + "\n")
                 f.write('-- Date        : ' + datetime.now().strftime("%A, %B %d %Y %H:%M:%S") + "\n")
                 f.write('-- Project     : ' + "ReGrid project\n")
                 f.write('-- Grid        : ' + "Description\n")
                 f.write('-- Generated ]\n\n')
 
-                f.write('SPECGRID                               -- Generated : Petrel\n')
+                f.write('SPECGRID                               -- Generated : ReGrid\n')
                 f.write('  %i %i %i 1 F /\n\n' %(self.ne, self.nn, self.nz) )
-                f.write('COORDSYS                               -- Generated : Petrel\n')
+                f.write('COORDSYS                               -- Generated : ReGrid\n')
                 f.write('  1 4 /\n\n') # what is this line?
 
-                f.write('COORD                                  -- Generated : Petrel\n')
-                #for ix in range(self.ne): 
-                for ix in range(1): 
-                    #for iy in range(self.nn):
-                    for iy in range(1):
-                        cell = self.Grid.GetCell(ix, 0, 0);
-                        print(cell.GetPoints().GetPoint(0)) 
-                        print(cell.GetPoints().GetPoint(1)) 
-                        print(cell.GetPoints().GetPoint(2)) 
-                        print(cell.GetPoints().GetPoint(3)) 
-                        print(cell.GetPoints().GetPoint(4)) 
-                        print(cell.GetPoints().GetPoint(5)) 
-                        print(cell.GetPoints().GetPoint(6)) 
-                        print(cell.GetPoints().GetPoint(7)) 
+                f.write('COORD                                  -- Generated : ReGrid\n')
+                nz = self.nz
 
+                fstr = str(" ")
+                for iy in range(1):
+                #for iy in range(self.nn):
+                    for ix in range(self.ne): 
+                        p0 = self.Grid.GetCell(ix, iy, 0).GetPoints().GetPoint(0) 
+                        fstr = self.printCOORDS(f, p0, fstr)
+                        p1 = self.Grid.GetCell(ix, iy, nz-1).GetPoints().GetPoint(4)  
+                        fstr = self.printCOORDS(f, p1, fstr)
+                    # outside edge on far x
+                    p2 = self.Grid.GetCell(ix, iy, 0).GetPoints().GetPoint(1)  
+                    fstr = self.printCOORDS(f, p2, fstr)
+                    p3 = self.Grid.GetCell(ix, iy, nz-1).GetPoints().GetPoint(5)  
+                    fstr = self.printCOORDS(f, p2, fstr)
+                    # outside edge on far y 
+                    for ix in range(1): #self.ne): 
+                        p8 = self.Grid.GetCell(ix, iy, 0).GetPoints().GetPoint(1)  
+                        fstr = self.printCOORDS(f, p8, fstr)
+                        p9 = self.Grid.GetCell(ix, iy, nz-1).GetPoints().GetPoint(5)  
+                        fstr = self.printCOORDS(f, p9, fstr)
+#                 # outside edge on far northeast
+#                 p2 = self.Grid.GetCell(ix, iy, 0).GetPoints().GetPoint(2)  
+#                 fstr += (" %2.2f %2.2f %2.2f" %(p2[0],p2[1],p2[2]))
+#                 if len(fstr) > MAXL:
+#                     f.write(fstr + "\n")
+#                     fstr = str(" ")
+#                 p3 = self.Grid.GetCell(ix, iy, nz-1).GetPoints().GetPoint(7)  
+                        print (  self.Grid.GetCell(ix, iy, 0).GetPoints() )
+                        print (  self.Grid.GetCell(ix, iy, 0).GetPoints().GetPoint(0) )
+                        print (  self.Grid.GetCell(ix, iy, 0).GetPoints().GetPoint(1) )
+                        print (  self.Grid.GetCell(ix, iy, 0).GetPoints().GetPoint(2) )
+                        print (  self.Grid.GetCell(ix, iy, 0).GetPoints().GetPoint(3) )
+                        print (  self.Grid.GetCell(ix, iy, 0).GetPoints().GetPoint(4) )
+                        print (  self.Grid.GetCell(ix, iy, 0).GetPoints().GetPoint(5) )
+                        print (  self.Grid.GetCell(ix, iy, 0).GetPoints().GetPoint(6) )
+                        print (  self.Grid.GetCell(ix, iy, 0).GetPoints().GetPoint(7) )
+                        print (  self.Grid.GetCell(ix, iy, nz-1).GetPoints().GetPoint(0) )
+                        print (  self.Grid.GetCell(ix, iy, nz-1).GetPoints().GetPoint(1) )
+                        print (  self.Grid.GetCell(ix, iy, nz-1).GetPoints().GetPoint(2) )
+                        print (  self.Grid.GetCell(ix, iy, nz-1).GetPoints().GetPoint(3) )
+                        print (  self.Grid.GetCell(ix, iy, nz-1).GetPoints().GetPoint(4) )
+                        print (  self.Grid.GetCell(ix, iy, nz-1).GetPoints().GetPoint(5) )
+                        print (  self.Grid.GetCell(ix, iy, nz-1).GetPoints().GetPoint(6) )
+                        print (  self.Grid.GetCell(ix, iy, nz-1).GetPoints().GetPoint(7) )
+#                 fstr += (" %2.2f %2.2f %2.2f" %(p3[0],p3[1],p3[2]))
+#                 f.write(fstr + " /\n")
+#                 fstr = str(" ")
         else:
             print("Only structured grids can be converted to ECLIPSE files")    
 
@@ -203,7 +250,7 @@ class GRDECL( FlowGrid ):
         self.points["e"] = self.coords[0::3] 
         self.points["n"] = self.coords[1::3] 
         self.points["z"] = self.coords[2::3]
-
+        
         # Here are the coordinates
         self.X0 = np.reshape(self.points["e"][0::2] , (self.ndx,self.ndy), order="F")
         self.Y0 = np.reshape(self.points["n"][0::2] , (self.ndx,self.ndy), order="F")
