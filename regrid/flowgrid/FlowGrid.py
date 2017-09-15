@@ -40,7 +40,7 @@ class FlowGrid( object ):
             print( "Grid type is not recognized" )
 
     def printCOORDS(self, f, p, fstr):
-        MAXL = 130
+        MAXL = 132
         for point in p:
             up = " %2.2f" %(point)
             if len(fstr) + len(up) > MAXL:
@@ -72,9 +72,8 @@ class FlowGrid( object ):
 
                 f.write('COORD                                  -- Generated : ReGrid\n')
                 nz = self.nz
-
                 fstr = str(" ")
-                for iy in range(1):
+                for iy in range(self.nn):
                 #for iy in range(self.nn):
                     for ix in range(self.ne): 
                         p0 = self.Grid.GetCell(ix, iy, 0).GetPoints().GetPoint(0) 
@@ -85,40 +84,37 @@ class FlowGrid( object ):
                     p2 = self.Grid.GetCell(ix, iy, 0).GetPoints().GetPoint(1)  
                     fstr = self.printCOORDS(f, p2, fstr)
                     p3 = self.Grid.GetCell(ix, iy, nz-1).GetPoints().GetPoint(5)  
-                    fstr = self.printCOORDS(f, p2, fstr)
-                    # outside edge on far y 
-                    for ix in range(1): #self.ne): 
-                        p8 = self.Grid.GetCell(ix, iy, 0).GetPoints().GetPoint(1)  
-                        fstr = self.printCOORDS(f, p8, fstr)
-                        p9 = self.Grid.GetCell(ix, iy, nz-1).GetPoints().GetPoint(5)  
-                        fstr = self.printCOORDS(f, p9, fstr)
-#                 # outside edge on far northeast
-#                 p2 = self.Grid.GetCell(ix, iy, 0).GetPoints().GetPoint(2)  
-#                 fstr += (" %2.2f %2.2f %2.2f" %(p2[0],p2[1],p2[2]))
-#                 if len(fstr) > MAXL:
-#                     f.write(fstr + "\n")
-#                     fstr = str(" ")
-#                 p3 = self.Grid.GetCell(ix, iy, nz-1).GetPoints().GetPoint(7)  
-                        print (  self.Grid.GetCell(ix, iy, 0).GetPoints() )
-                        print (  self.Grid.GetCell(ix, iy, 0).GetPoints().GetPoint(0) )
-                        print (  self.Grid.GetCell(ix, iy, 0).GetPoints().GetPoint(1) )
-                        print (  self.Grid.GetCell(ix, iy, 0).GetPoints().GetPoint(2) )
-                        print (  self.Grid.GetCell(ix, iy, 0).GetPoints().GetPoint(3) )
-                        print (  self.Grid.GetCell(ix, iy, 0).GetPoints().GetPoint(4) )
-                        print (  self.Grid.GetCell(ix, iy, 0).GetPoints().GetPoint(5) )
-                        print (  self.Grid.GetCell(ix, iy, 0).GetPoints().GetPoint(6) )
-                        print (  self.Grid.GetCell(ix, iy, 0).GetPoints().GetPoint(7) )
-                        print (  self.Grid.GetCell(ix, iy, nz-1).GetPoints().GetPoint(0) )
-                        print (  self.Grid.GetCell(ix, iy, nz-1).GetPoints().GetPoint(1) )
-                        print (  self.Grid.GetCell(ix, iy, nz-1).GetPoints().GetPoint(2) )
-                        print (  self.Grid.GetCell(ix, iy, nz-1).GetPoints().GetPoint(3) )
-                        print (  self.Grid.GetCell(ix, iy, nz-1).GetPoints().GetPoint(4) )
-                        print (  self.Grid.GetCell(ix, iy, nz-1).GetPoints().GetPoint(5) )
-                        print (  self.Grid.GetCell(ix, iy, nz-1).GetPoints().GetPoint(6) )
-                        print (  self.Grid.GetCell(ix, iy, nz-1).GetPoints().GetPoint(7) )
-#                 fstr += (" %2.2f %2.2f %2.2f" %(p3[0],p3[1],p3[2]))
-#                 f.write(fstr + " /\n")
-#                 fstr = str(" ")
+                    fstr = self.printCOORDS(f, p3, fstr)
+                # outside edge on far y 
+                for ix in range(self.ne):
+                    p8 = self.Grid.GetCell(ix, iy, 0).GetPoints().GetPoint(3)  
+                    fstr = self.printCOORDS(f, p8, fstr)
+                    p9 = self.Grid.GetCell(ix, iy, nz-1).GetPoints().GetPoint(7)  
+                    fstr = self.printCOORDS(f, p9, fstr)
+                # outside edge on far northeast
+                p14 = self.Grid.GetCell(ix, iy, 0).GetPoints().GetPoint(2)  
+                fstr = self.printCOORDS(f, p14, fstr)
+                p15 = self.Grid.GetCell(ix, iy, nz-1).GetPoints().GetPoint(6)  
+                fstr = self.printCOORDS(f, p15, fstr)
+                f.write(fstr)
+                fstr = " "
+                f.write(" /\r\n\r\n")
+
+                f.write('ZCORN                                  -- Generated : ReGrid\n')
+                for iz in range(1): #self.nz):
+                    for iy in range(self.nn):
+                        for ix in range(self.ne):
+                            p0 = self.Grid.GetCell(ix, iy, iz).GetPoints().GetPoint(0)
+                            p1 = self.Grid.GetCell(ix, iy, iz).GetPoints().GetPoint(1)
+                            fstr = self.printCOORDS(f, [p0[2]], fstr)
+                            fstr = self.printCOORDS(f, [p1[2]], fstr)
+                        for ix in range(self.ne):
+                            p0 = self.Grid.GetCell(ix, iy, iz).GetPoints().GetPoint(3)
+                            p1 = self.Grid.GetCell(ix, iy, iz).GetPoints().GetPoint(2)
+                            fstr = self.printCOORDS(f, [p0[2]], fstr)
+                            fstr = self.printCOORDS(f, [p1[2]], fstr)
+                            
+                f.write(fstr)
         else:
             print("Only structured grids can be converted to ECLIPSE files")    
 
@@ -278,9 +274,9 @@ class GRDECL( FlowGrid ):
               _______  _______  ______  _______  _______  _______  _______
              /      / /      / /     / /      / /      / /      / /      /|
             /      / /      / /     / /      / /      / /      / /      / |
-           00----07 01----08 02----09 03----10 04----11 05----12 06----13 /
+           00----01 02----03 04----05 06----07 08----09 10----11 12----13 /
             |  A  | |  B   | |   C  | |   D  | |   E  | |  F   | |   G  |/
-           14----21 15----22 16----23 17----24 18----25 19----26 20----28
+           14----15 16----17 18----19 20----21 22----23 24----25 26----27
            
             
             This pattern is then repeated for each depth layer, it isn't that clear, but my ASCII art skills
