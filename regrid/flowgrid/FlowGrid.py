@@ -17,6 +17,7 @@ f2m = 0.3048 # ft to m
 
 class FlowGrid( object ):
     def __init__( self ):
+        self.skip = 0
         pass
     
     def exportVTK(self, fname):
@@ -41,8 +42,14 @@ class FlowGrid( object ):
 
     def printCOORDS(self, f, p, fstr):
         MAXL = 132
+        #if self.skip:
+        #    self.skip -= 1
+        #    return fstr
         for point in p:
             up = " %2.2f" %(point)
+            #if (up == " 4697.28"):
+            #    up = " 7*4697.28"
+            #    self.skip = 6
             if len(fstr) + len(up) > MAXL:
                 f.write(fstr + "\n")
                 fstr = " "
@@ -98,11 +105,12 @@ class FlowGrid( object ):
                 fstr = self.printCOORDS(f, p15, fstr)
                 f.write(fstr)
                 fstr = " "
-                f.write(" /\n")
-                return
+                f.write(" /")
+                f.write("\n")
+                f.write("\n")
 
                 f.write('ZCORN                                  -- Generated : ReGrid\n')
-                for iz in range(1): #(self.nz):
+                for iz in range(self.nz):
                     for iy in range(self.nn):
                         # front face
                         for ix in range(self.ne):
@@ -117,19 +125,25 @@ class FlowGrid( object ):
                             fstr = self.printCOORDS(f, [p0[2]], fstr)
                             fstr = self.printCOORDS(f, [p1[2]], fstr)
                     # bottom layer 
-                    # front face
-                    for ix in range(self.ne):
-                        p0 = self.Grid.GetCell(ix, iy, iz).GetPoints().GetPoint(4)
-                        p1 = self.Grid.GetCell(ix, iy, iz).GetPoints().GetPoint(5)
-                        fstr = self.printCOORDS(f, [p0[2]], fstr)
-                        fstr = self.printCOORDS(f, [p1[2]], fstr)
-                    # back face
-                    for ix in range(self.ne):
-                        p0 = self.Grid.GetCell(ix, iy, iz).GetPoints().GetPoint(7)
-                        p1 = self.Grid.GetCell(ix, iy, iz).GetPoints().GetPoint(6)
-                        fstr = self.printCOORDS(f, [p0[2]], fstr)
-                        fstr = self.printCOORDS(f, [p1[2]], fstr)
+                    for iy in range(self.nn):
+                        # front face
+                        for ix in range(self.ne):
+                            p0 = self.Grid.GetCell(ix, iy, iz).GetPoints().GetPoint(4)
+                            p1 = self.Grid.GetCell(ix, iy, iz).GetPoints().GetPoint(5)
+                            fstr = self.printCOORDS(f, [p0[2]], fstr)
+                            fstr = self.printCOORDS(f, [p1[2]], fstr)
+                        # back face
+                        for ix in range(self.ne):
+                            p0 = self.Grid.GetCell(ix, iy, iz).GetPoints().GetPoint(7)
+                            p1 = self.Grid.GetCell(ix, iy, iz).GetPoints().GetPoint(6)
+                            fstr = self.printCOORDS(f, [p0[2]], fstr)
+                            fstr = self.printCOORDS(f, [p1[2]], fstr)
                 f.write(fstr)
+                fstr = " "
+                f.write(" /")
+                f.write("\n")
+                f.write("\n")
+                f.write('ACTNUM                                 -- Generated : ReGrid\n')
         else:
             print("Only structured grids can be converted to ECLIPSE files")    
 
@@ -365,7 +379,6 @@ class GRDECL( FlowGrid ):
                     #self.ZZT[ilay][:,iin][0]  = np.nan 
                     #self.ZZB[ilay][:,iin][0]  = np.nan 
                 if iin == self.nn-1:
-                    print ("fars", fars.keys()) 
                     self.ZZT[ilay][:,iin+1] = fars[1]
                     self.ZZB[ilay][:,iin+1] = bfars[1]
                     # NaN mask
