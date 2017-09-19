@@ -98,22 +98,37 @@ class FlowGrid( object ):
                 fstr = self.printCOORDS(f, p15, fstr)
                 f.write(fstr)
                 fstr = " "
-                f.write(" /\r\n\r\n")
+                f.write(" /\n")
+                return
 
                 f.write('ZCORN                                  -- Generated : ReGrid\n')
-                for iz in range(1): #self.nz):
+                for iz in range(1): #(self.nz):
                     for iy in range(self.nn):
+                        # front face
                         for ix in range(self.ne):
                             p0 = self.Grid.GetCell(ix, iy, iz).GetPoints().GetPoint(0)
                             p1 = self.Grid.GetCell(ix, iy, iz).GetPoints().GetPoint(1)
                             fstr = self.printCOORDS(f, [p0[2]], fstr)
                             fstr = self.printCOORDS(f, [p1[2]], fstr)
+                        # back face
                         for ix in range(self.ne):
                             p0 = self.Grid.GetCell(ix, iy, iz).GetPoints().GetPoint(3)
                             p1 = self.Grid.GetCell(ix, iy, iz).GetPoints().GetPoint(2)
                             fstr = self.printCOORDS(f, [p0[2]], fstr)
                             fstr = self.printCOORDS(f, [p1[2]], fstr)
-                            
+                    # bottom layer 
+                    # front face
+                    for ix in range(self.ne):
+                        p0 = self.Grid.GetCell(ix, iy, iz).GetPoints().GetPoint(4)
+                        p1 = self.Grid.GetCell(ix, iy, iz).GetPoints().GetPoint(5)
+                        fstr = self.printCOORDS(f, [p0[2]], fstr)
+                        fstr = self.printCOORDS(f, [p1[2]], fstr)
+                    # back face
+                    for ix in range(self.ne):
+                        p0 = self.Grid.GetCell(ix, iy, iz).GetPoints().GetPoint(7)
+                        p1 = self.Grid.GetCell(ix, iy, iz).GetPoints().GetPoint(6)
+                        fstr = self.printCOORDS(f, [p0[2]], fstr)
+                        fstr = self.printCOORDS(f, [p1[2]], fstr)
                 f.write(fstr)
         else:
             print("Only structured grids can be converted to ECLIPSE files")    
@@ -349,9 +364,10 @@ class GRDECL( FlowGrid ):
                 #if self.ActiveCells[0,iin,ilay] == 0:
                     #self.ZZT[ilay][:,iin][0]  = np.nan 
                     #self.ZZB[ilay][:,iin][0]  = np.nan 
-                if iin == self.nn-1: 
-                    self.ZZT[ilay][:,iin+1] = fars[0]
-                    self.ZZB[ilay][:,iin+1] = bfars[0]
+                if iin == self.nn-1:
+                    print ("fars", fars.keys()) 
+                    self.ZZT[ilay][:,iin+1] = fars[1]
+                    self.ZZB[ilay][:,iin+1] = bfars[1]
                     # NaN mask
                     #self.ZZT[ilay][:,iin+1][1::][imask] = np.nan
                     #self.ZZB[ilay][:,iin+1][1::][imask] = np.nan
