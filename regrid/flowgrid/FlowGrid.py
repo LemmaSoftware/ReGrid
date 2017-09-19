@@ -181,6 +181,7 @@ class GRDECL( FlowGrid ):
     def __init__( self ):
         super(GRDECL,self).__init__()
         nx,ny,nz = 0,0,0 
+        self.Prop = {}
 
     def loadNodes(self, fname):
         """
@@ -502,6 +503,48 @@ class GRDECL( FlowGrid ):
 
         print("Total grid volume: "+ str(np.sum(self.Volumes)) +  " m^3")
 
+    def readProperty(self, fname):
+        """ Reads a single property from a file, for time series or multiple properties
+            you need to build on this
+        """
+        temp = []
+        with open(fname, "r") as fp:
+            for line in fp:
+                item = line.split()
+                if len(item) > 0:
+                    if item[0] != "--":
+                        tag = item[0]
+                        attribute = fp.readline().split()[-1]
+                        self.Prop[tag] = attribute
+                        print("loading", attribute)
+                        for line in fp:
+                            if line.split()[0] != "--":
+                                if line.split()[-1] != "/":
+                                    temp += line.split()
+                                else:
+                                    temp += line.split()[0:-1]
+                                    break
+         
+        data = np.zeros( (self.ne*self.nn*self.nz), dtype=float )
+        count = 0
+        for item in temp:
+            if "*" in item:
+                ct = (int)(item.split("*")[0])
+                vl = (float)(item.split("*")[1])
+                data[count:count+ct] = vl
+                count += ct
+            else:
+                data[count] = (float)(item)
+                count += 1 
+       
+        data = np.reshape(data, (self.ne, self.nn, self.nz), order="F")
+        
+        # Add to VTK grid
+        ac = vtk.vtkDoubleArray()
+        ac.SetName( attribute ) 
+        for iac in data.flatten( order='F' ):
+            ac.InsertNextTuple1( iac ) 
+        self.Grid.GetCellData().AddArray(ac)
 
 class SUTRA( FlowGrid ):
     """ SUTRA is a USGS flow modelling code.  
