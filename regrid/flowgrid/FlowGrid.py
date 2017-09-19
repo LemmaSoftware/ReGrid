@@ -55,6 +55,18 @@ class FlowGrid( object ):
                 fstr = " "
             fstr += up 
         return fstr
+    
+    def printAC(self, f, p, N, fstr):
+        MAXL = 132
+        if N == 1:
+            up = " %i" %(p)
+        else:
+            up = " %i*%i" %(N,p)
+        if len(fstr) + len(up) > MAXL:
+            f.write(fstr + "\n")
+            fstr = " "
+        fstr += up 
+        return fstr
 
     def exportECL(self, fname):
         """ Saves the file as an ECLIPSE grid 
@@ -144,6 +156,22 @@ class FlowGrid( object ):
                 f.write("\n")
                 f.write("\n")
                 f.write('ACTNUM                                 -- Generated : ReGrid\n')
+       
+                c = -999
+                N = 0  
+                for iac in self.ActiveCells.flatten( order='F' ):
+                    if iac == c:
+                        N += 1
+                    else:
+                        if c != -999:
+                            fstr = self.printAC( f, c, N, fstr )
+                        c = iac
+                        N = 1  
+                fstr = self.printAC( f, c, N, fstr )
+                f.write(fstr)
+                f.write(" /")
+                f.write("\n")
+                f.write("\n")
         else:
             print("Only structured grids can be converted to ECLIPSE files")    
 
@@ -245,6 +273,13 @@ class GRDECL( FlowGrid ):
                                                 self.Y0[ix,iy], \
                                            ve * self.ZZB[iz][ix,iy] )
         self.Grid.SetPoints(vtk_points)
+        
+        # Add in active cells
+        ac = vtk.vtkIntArray()
+        ac.SetName( "ActiveCells" ) 
+        for iac in self.ActiveCells.flatten( order='F' ):
+            ac.InsertNextTuple1( iac ) 
+        self.Grid.GetCellData().AddArray(ac)
 
     def buildGrid(self, plot=False):
         """
@@ -425,7 +460,7 @@ class GRDECL( FlowGrid ):
                 count += 1 
         
         self.ActiveCells = np.reshape(self.ActiveCells, (self.ne, self.nn, self.nz), order="F")
- 
+
         if plot:
             plt.pcolor(self.X0.T, self.Y0.T, self.ActiveCells[:,:,0].T, edgecolors='w', linewidths=.1)
             plt.xlabel("easting")
@@ -539,7 +574,7 @@ class SUTRA( FlowGrid ):
         nr, nc = np.shape(k)
         if self.GridType == "vtkStructuredGrid":
             # Sutra and VTK use opposite ordering 
-            k = np.reshape(k, (self.nx-1, self.ny-1, self.nz-1, np.shape(k)[1]))
+            k = np.reshape( k, (self.nx-1, self.ny-1, self.nz-1, np.shape(k)[1]) )
             k = np.reshape( k, (nr, nc), order='F' )
         kx = vtk.vtkDoubleArray()
         kx.SetName(label[0]) 
