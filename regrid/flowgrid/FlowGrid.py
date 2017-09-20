@@ -18,7 +18,7 @@ f2m = 0.3048 # ft to m
 class FlowGrid( object ):
     def __init__( self ):
         self.skip = 0
-        pass
+        self.Prop = {}
     
     def exportVTK(self, fname):
         """ Saves the SUTRA grid as a VTK file, either a VTKStructuredGrid (.vts)
@@ -67,10 +67,26 @@ class FlowGrid( object ):
             fstr = " "
         fstr += up 
         return fstr
+    
+    def printPROP(self, f, p, N, fstr):
+        MAXL = 132
+        if N == 1:
+            up = " %1.4f" %(p)
+        else:
+            up = " %i*%1.4f" %(N,p)
+        if len(fstr) + len(up) > MAXL:
+            f.write(fstr + "\n")
+            fstr = " "
+        fstr += up 
+        return fstr
 
     def exportECL(self, fname):
-        """ Saves the file as an ECLIPSE grid 
+        """ Saves the file as an ECLIPSE grid. For the purposes of ECLIPSE  
         """
+        
+        # TODO add consistency of dimensions across the inputs
+        self.ne, self.nn, self.nz = np.array(self.Grid.GetDimensions()) - 1 # ECLIPSE 
+
         filename, ext = os.path.splitext(fname)
         if self.GridType == "vtkStructuredGrid":
             with io.open(filename+".GRDECL", 'w', newline='\r\n') as f:
@@ -92,8 +108,8 @@ class FlowGrid( object ):
                 f.write('COORD                                  -- Generated : ReGrid\n')
                 nz = self.nz
                 fstr = str(" ")
+
                 for iy in range(self.nn):
-                #for iy in range(self.nn):
                     for ix in range(self.ne): 
                         p0 = self.Grid.GetCell(ix, iy, 0).GetPoints().GetPoint(0) 
                         fstr = self.printCOORDS(f, p0, fstr)
@@ -175,13 +191,55 @@ class FlowGrid( object ):
         else:
             print("Only structured grids can be converted to ECLIPSE files")    
 
+    def exportECLPropertyFiles( self, fname ):
+        filename, ext = os.path.splitext(fname)
+        for ia in range( self.Grid.GetCellData().GetNumberOfArrays() ):
+            prop = self.Grid.GetCellData().GetArray(ia).GetName()         
+            if self.GridType == "vtkStructuredGrid":
+                with io.open(filename+"prop-"+prop.lower()+".GRDECL", 'w', newline='\r\n') as f:
+                    f.write('-- Generated [\n')
+                    f.write('-- Format      : ECLIPSE keywords (grid properties) (ASCII)\n')
+                    f.write('-- Exported by : ReGrid v.' + version + "\n")
+                    f.write('-- User name   : ' + getpass.getuser() + "\n")
+                    f.write('-- Date        : ' + datetime.now().strftime("%A, %B %d %Y %H:%M:%S") + "\n")
+                    f.write('-- Project     : ' + "ReGrid project\n")
+                    f.write('-- Grid        : ' + "Description\n")
+                    f.write('-- Unit system : ' + "ECLIPSE-Field\n")
+                    f.write('-- Generated ]\n\n')
+                    
+                    f.write( prop.upper() + '                                 -- Generated : ReGrid\n' )
+                    f.write( '-- Property name in Petrel : ' + prop + '\n' )
+
+
+                    c = -999.9999
+                    N = 0  
+                    ii = 0
+                    fstr = " "
+                    for iz in range(self.nz):
+                        for iy in range(self.nn):
+                            for ix in range(self.ne):
+                                iac = round(self.Grid.GetCellData().GetArray(ia).GetTuple1(ii), 4) 
+                                ii += 1
+
+                                if iac == c:
+                                    N += 1
+                                else:
+                                    if c != -999.9999:
+                                        fstr = self.printPROP( f, c, N, fstr )
+                                    c = iac
+                                    N = 1  
+                    fstr = self.printPROP( f, c, N, fstr )
+                    f.write(fstr)
+                    f.write(" /")
+                    f.write("\n")
+
+
 class GRDECL( FlowGrid ):
     """ GRDECL processes Schlumberger ECLIPSE files
     """
     def __init__( self ):
         super(GRDECL,self).__init__()
         nx,ny,nz = 0,0,0 
-        self.Prop = {}
 
     def loadNodes(self, fname):
         """
@@ -189,7 +247,7 @@ class GRDECL( FlowGrid ):
                   iterates through I, then decriments J, increments K
                   I = easting
                   J = northing
-                  K = depth or elevation???
+                  K = depth or elevation?
         """
         with open(fname, "r") as fp:
 
@@ -565,6 +623,8 @@ class SUTRA( FlowGrid ):
         self.nx = nx
         self.ny = ny 
         self.nz = nz
+        
+        self.ActiveCells = np.ones( (self.nx*self.ny*self.nz), dtype=int )
 
         X = np.loadtxt(fname, comments="#")
         self.points = np.reshape( np.array( (X[:,2], X[:,3], X[:,4]) ).T, (nx, ny, nz, 3))
@@ -633,7 +693,7 @@ class SUTRA( FlowGrid ):
         self.Grid.GetCellData().AddArray(ky)
         self.Grid.GetCellData().AddArray(kz)
 
-    def readPorosity(self, fname, label="$\Phi$"):
+    def readPorosity(self, fname, label="$\phi$"):
         phi = np.loadtxt( fname )
         nr, nc = np.shape(phi)
         if self.GridType == "vtkStructuredGrid":
