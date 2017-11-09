@@ -47,9 +47,6 @@ class FlowGrid( object ):
         #    return fstr
         for point in p:
             up = " %2.2f" %(point)
-            #if (up == " 4697.28"):
-            #    up = " 7*4697.28"
-            #    self.skip = 6
             if len(fstr) + len(up) > MAXL:
                 f.write(fstr + "\n")
                 fstr = " "
@@ -192,9 +189,23 @@ class FlowGrid( object ):
             print("Only structured grids can be converted to ECLIPSE files")    
 
     def exportECLPropertyFiles( self, fname ):
+        """ Convert any point data to cell data
+        """
+
+        # Convert point data to cell data for output
+        # verifying if this is necessary or if ECLIPSE can use point attributes
+        pointConvert = True
+        if pointConvert:
+            p2c = vtk.vtkPointDataToCellData( )
+            p2c.SetInputDataObject( self.Grid )
+            p2c.PassPointDataOn() 
+            p2c.Update()
+            self.Grid = p2c.GetOutput()
+
         filename, ext = os.path.splitext(fname)
         for ia in range( self.Grid.GetCellData().GetNumberOfArrays() ):
-            prop = self.Grid.GetCellData().GetArray(ia).GetName()         
+            prop = self.Grid.GetCellData().GetArray(ia).GetName()        
+            print ("exporting prop", prop) 
             if self.GridType == "vtkStructuredGrid":
                 with io.open(filename+"prop-"+prop.lower()+".GRDECL", 'w', newline='\r\n') as f:
                     f.write('-- Generated [\n')
@@ -611,7 +622,7 @@ class SUTRA( FlowGrid ):
         super(SUTRA,self).__init__()
         nx,ny,nz = 0,0,0 
 
-    def loadNodes( self, fname, nx, ny, nz, ve=1 ):
+    def loadNodes( self, fname, nx, ny, nz, ve=-1 ):
         """ Reads in the points of the grid, ususally in a file called nodewise
             fname = nodes file 
             nx = number of cells in the easting(x) direction 
@@ -693,7 +704,7 @@ class SUTRA( FlowGrid ):
         self.Grid.GetCellData().AddArray(ky)
         self.Grid.GetCellData().AddArray(kz)
 
-    def readPorosity(self, fname, label="$\phi$"):
+    def readPorosity(self, fname, label="phi"): # LaTeX tags work too: $\phi$ 
         phi = np.loadtxt( fname )
         nr, nc = np.shape(phi)
         if self.GridType == "vtkStructuredGrid":
@@ -705,8 +716,7 @@ class SUTRA( FlowGrid ):
         for ik, K in enumerate(phi):
             vphi.InsertNextTuple1( K[5] )
         self.Grid.GetPointData().AddArray(vphi)
-
-
+        
     def readPressure(self, fname, ts=2, label="$P$"):
         nnodes = self.nx*self.ny*self.nz
         P = np.loadtxt( fname, comments="#" )[ts*nnodes:(ts+1)*nnodes,:]
