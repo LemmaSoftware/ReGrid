@@ -68,9 +68,11 @@ class FlowGrid( object ):
     def printPROP(self, f, p, N, fstr):
         MAXL = 132
         if N == 1:
-            up = " %1.4f" %(p)
+            #up = " %1.4e" %(p) # standard notation 
+            up = " %1.4e" %(p) # scientific notation 
         else:
-            up = " %i*%1.4f" %(N,p)
+            up = " %i*%1.4e" %(N,p)
+            #up = " %i*%1.4e" %(N,p) # scientific notation 
         if len(fstr) + len(up) > MAXL:
             f.write(fstr + "\n")
             fstr = " "
@@ -229,15 +231,16 @@ class FlowGrid( object ):
                     for iz in range(self.nz):
                         for iy in range(self.nn):
                             for ix in range(self.ne):
-                                iac = round(self.Grid.GetCellData().GetArray(ia).GetTuple1(ii), 4) 
+                                #iac = round(self.Grid.GetCellData().GetArray(ia).GetTuple1(ii), 4) 
+                                iac = '{:0.4e}'.format( self.Grid.GetCellData().GetArray(ia).GetTuple1(ii) )
+                                print (iac)
                                 ii += 1
-
                                 if iac == c:
                                     N += 1
                                 else:
                                     if c != -999.9999:
                                         fstr = self.printPROP( f, c, N, fstr )
-                                    c = iac
+                                    c = eval(iac)
                                     N = 1  
                     fstr = self.printPROP( f, c, N, fstr )
                     f.write(fstr)
@@ -643,7 +646,7 @@ class SUTRA( FlowGrid ):
         # work directly with VTK structures
         self.GridType = "vtkStructuredGrid"
         self.Grid = vtk.vtkStructuredGrid()
-        self.Grid.SetDimensions(124,88,4)    
+        self.Grid.SetDimensions(nx,ny,nz)    
         vtk_points = vtk.vtkPoints()
         for iz in range(nz):
             for iy in range(ny):
