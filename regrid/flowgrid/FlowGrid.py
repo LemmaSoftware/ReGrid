@@ -223,7 +223,6 @@ class FlowGrid( object ):
                     f.write( prop.upper() + '                                 -- Generated : ReGrid\n' )
                     f.write( '-- Property name in Petrel : ' + prop + '\n' )
 
-
                     c = -999.9999
                     N = 0  
                     ii = 0
@@ -436,9 +435,9 @@ class GRDECL( FlowGrid ):
             else:
                 temp += [ (float)(item) ]
                 count += 1
-        
 
-        layers = np.resize(temp, (8, self.ne*self.nn*self.nz ))
+        #layers = np.resize(temp, (8, self.ne*self.nn*self.nz ))
+        layers = np.resize(temp, (self.nz*2, self.ne*self.nn*4))
         """
         plt.plot(newtemp[0,:])                    # TOP     0    0
         plt.plot(newtemp[1,:])       # SAME --    # BOTTOM  0    1
@@ -451,7 +450,7 @@ class GRDECL( FlowGrid ):
         #plt.plot(newtemp[6,:])      # SAME --    # TOP     3    6
         plt.plot(newtemp[7,:])                    # BOTTOM  3    7
         """
-        self.ZZT = {} # zztop ha ha
+        self.ZZT = {} # zztop ha ha...two year's later this is still funny -TI
         self.ZZB = {}
         for ilay in range(self.nz):
             self.ZZT[ilay] = np.zeros( (self.ndx, self.ndy) )
@@ -464,14 +463,18 @@ class GRDECL( FlowGrid ):
                 bnears = {}
                 bfars = {}
                 for iif in range(2): 
-                    # top 
+                    # top
                     nears[iif] = layers[ilay*2][iis:iis+2*self.ne][0::2].tolist()
                     fars[iif]  = layers[ilay*2][iis:iis+2*self.ne][1::2].tolist()
+                    layers[ilay*2][iis:iis+2*self.ne][0::2] *= 0. # check 
+                    layers[ilay*2][iis:iis+2*self.ne][1::2] *= 0.
                     nears[iif].append(fars[iif][-1])
                     fars[iif] = [nears[iif][0]] + fars[iif]
                     # bottom  
                     bnears[iif] = layers[ilay*2+1][iis:iis+2*self.ne][0::2].tolist()
                     bfars[iif]  = layers[ilay*2+1][iis:iis+2*self.ne][1::2].tolist()
+                    layers[ilay*2+1][iis:iis+2*self.ne][0::2] *= 0.
+                    layers[ilay*2+1][iis:iis+2*self.ne][1::2] *= 0.
                     bnears[iif].append(bfars[iif][-1])
                     bfars[iif] = [bnears[iif][0]] + bfars[iif]
                     # 
@@ -495,6 +498,9 @@ class GRDECL( FlowGrid ):
                     #if self.ActiveCells[0,iin,ilay] == 0:
                     #    self.ZZT[ilay][:,iin+1][0]  = np.nan 
                     #    self.ZZB[ilay][:,iin+1][0]  = np.nan 
+
+        print ("Layers ||", np.linalg.norm(layers), "||")
+        #exit()
  
         # visualize
         if plot:
