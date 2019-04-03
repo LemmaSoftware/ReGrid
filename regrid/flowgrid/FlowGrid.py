@@ -79,13 +79,42 @@ class FlowGrid( object ):
         fstr += up 
         return fstr
 
+    def exportTOUGH2(self, fname):
+        """Saves the grid as a fixed format TOUGH(2) grid. 
+        """
+        STR = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+        self.ne, self.nn, self.nz = np.array(self.Grid.GetDimensions()) #- 1 #  
+        filename, ext = os.path.splitext(fname)
+        if self.GridType == "vtkStructuredGrid":
+            with io.open(filename, 'w', newline='\r\n') as f:
+                f.write("ELEME")
+                # debug 
+                f.write(
+"""
+1        10        20        30        40        50        60        70        80
+|--------|---------|---------|---------|---------|---------|---------|---------|
+12345678901234567890123456789012345678901234567890123456789012345678901234567890
+""")
+                
+                ii = 0
+                for iy in range(self.nn):
+                    for ix in range(self.ne): 
+                        #f.write(str(iy)+str(ix)+"\n")
+                        # first base 
+                        b2 = ii // (len(STR)*len(STR))
+                        b1 = (ii - len(STR)*b2) // len(STR)
+                        b0 = ii % len(STR) 
+
+                        f.write( STR[b2] + STR[b1] + STR[b0]  + "\t" + str(ii) +  "\n" )
+                        ii += 1
+
+
     def exportECL(self, fname):
-        """ Saves the file as an ECLIPSE grid. For the purposes of ECLIPSE  
+        """ Saves the grid as an ECLIPSE grid. For the purposes of ECLIPSE  
         """
         
         # TODO add consistency of dimensions across the inputs
         self.ne, self.nn, self.nz = np.array(self.Grid.GetDimensions()) - 1 # ECLIPSE 
-
         filename, ext = os.path.splitext(fname)
         if self.GridType == "vtkStructuredGrid":
             with io.open(filename+".GRDECL", 'w', newline='\r\n') as f:

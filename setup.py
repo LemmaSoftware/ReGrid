@@ -4,7 +4,7 @@ from setuptools import setup, Extension
 
 # here is a new comment, but this one is better
 setup(name='ReGrid',
-      version='0.0.1',
+      version='0.0.2',
       description='Grid conversion utilities for multiphase flow modelling software',
       author='Trevor P. Irons',
       author_email='Trevor.Irons@egi.utah.edu',
