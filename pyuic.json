@@ -1,0 +1,12 @@
+{
+    "files": [
+        [
+            "regrid/gui/main.ui",
+            "regrid/gui"
+        ]
+    ],
+    "pyrcc": "pyrcc5",
+    "pyrcc_options": "",
+    "pyuic": "pyuic5",
+    "pyuic_options": "--from-imports"
+}
