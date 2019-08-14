@@ -35,7 +35,7 @@ setup(name='ReGrid',
           'scipy',
           'numpy',
           'cmocean',
-#          'vtk'
+          'vtk'
       ],
       packages=['regrid', 'regrid.flowgrid','regrid.gui'],
       # for forced build of pyuic
