@@ -21,7 +21,7 @@ class FlowGrid( object ):
         self.Prop = {}
     
     def exportVTK(self, fname):
-        """ Saves the SUTRA grid as a VTK file, either a VTKStructuredGrid (.vts)
+        """ Saves the grid as a VTK file, either a VTKStructuredGrid (.vts)
             or a VTKUnstructuredGrid (.vtu) depending on mesh type. 
             fname = the filename it will be saved at, if no extension is given, 
             .vts is appended 

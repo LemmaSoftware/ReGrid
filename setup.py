@@ -20,7 +20,7 @@ with open("README.md", "r") as fh:
     long_description = fh.read()
 
 setup(name='ReGrid',
-      version='0.0.2',
+      version='0.0.4',
       description='Grid conversion utilities for multiphase flow modelling software',
       author='Trevor P. Irons',
       author_email='Trevor.Irons@egi.utah.edu',
