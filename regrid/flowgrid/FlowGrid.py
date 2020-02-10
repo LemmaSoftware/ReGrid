@@ -1,7 +1,8 @@
 import os, io
 import numpy as np
 from datetime import * 
-import getpass 
+import getpass
+import string
 
 from mpl_toolkits.mplot3d import axes3d
 from matplotlib.ticker import MaxNLocator
