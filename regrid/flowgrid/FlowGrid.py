@@ -779,3 +779,276 @@ class SUTRA( FlowGrid ):
         self.Grid.GetPointData().AddArray(vP)
         self.Grid.GetPointData().AddArray(vC)
 
+
+# For converting CMG grid to VTK grid
+# Currently supports corner point grids only
+class CMG(FlowGrid):
+    def __init__(self):
+        super(CMG, self).__init__()
+        nx, ny, nz = 0, 0, 0
+
+    # A grid should be loaded using a CMG formatted input file (.dat)
+    # As far as I am aware, the CMG output files (.out) do not contain complete grid information
+    def loadNodes(self, fname):
+        self.iWidths = []
+        self.jWidths = []
+        with open(fname, "r") as fp:
+
+            # TODO: the way that keywords are read in currently depends on their
+            # TODO: ordering in the input file - look for ** keyword to denote section ends?
+            # Read header
+            for line in fp:
+                item = line.split()
+                if len(item) > 0:
+                    # Should we be concerned cases with and without *?
+                    if item[0] == "GRID" or item[0] == "*GRID":
+                        # Possible grid types are CART, VARI, CORNER, RADIAL
+                        self.gridType = item[1]
+                        # i,j,k
+                        self.size = np.array(item[2:5], dtype=int)
+                    # Here we assume that DI IVAR comes before DJ JVAR
+                    #   Add support for both cases?
+                    if item[0] == "DI":
+                        if item[1] == "IVAR":
+                            self.iWidths += item[2:]
+                            break
+                        elif item[1] == "CON":
+                            pass
+
+            # Read DI
+            for line in fp:
+                item = line.split()
+                if item[0] != "DJ":
+                    self.iWidths += item
+                else:
+                    self.jWidths += item[2:]
+                    break
+
+            # Read DJ
+            for line in fp:
+                item = line.split()
+                if item[0] != "ZCORN":
+                    self.jWidths += item
+                else:
+                    self.jWidths += item[2:]
+                    break
+            self.calcCoords(fp)
+
+            # Read NULL
+            for line in fp:
+                item = line.split()
+                if item[0] == "NULL":
+                    break
+            self.buildActiveCells(fp)
+
+        # Add in active cells
+        ac = vtk.vtkIntArray()
+        ac.SetName( "ActiveCells" )
+        for iac in self.ActiveCells.flatten( order='F' ):
+            ac.InsertNextTuple1( iac )
+        self.Grid.GetCellData().AddArray(ac)
+
+    def calcCoords(self, fp):
+        # -Convert CMG DI,DJ cell width data to x,y coordinate lists
+        # -Write coordinate lists following ZCORN ordering
+        # -There will be many duplicated points at this step, since
+        #  grid blocks may share corners
+
+        def writeCorners():
+            x1 = 0
+            x2 = 0
+            for i in range(self.size[0]):
+                x2 = x1 + float(self.iWidths[i])
+                X.extend([x1, x2])
+                Y.extend([y, y])
+                x1 = x2
+
+        def writeCoords(coord):
+            XX.append(X[coord])
+            YY.append(Y[coord])
+            ZZ.append(Z[coord])
+
+        def buildLayer():
+            for j in range(self.size[1]):
+                for i in range(self.size[0]):
+                    # write NW corner
+                    if i == 0:
+                        nwCoord = 2 * i + 4 * self.size[0] * j + const
+                        writeCoords(nwCoord)
+                    # write NE corner
+                    neCoord = 2 * i + 4 * self.size[0] * j + const + 1
+                    writeCoords(neCoord)
+                if j == self.size[1] - 1:
+                    for i in range(self.size[0]):
+                        # write SW corner
+                        if i == 0:
+                            swCoord = 2 * i + 4 * self.size[0] * j + 2 * self.size[0] + const
+                            writeCoords(swCoord)
+                        # write SE corner
+                        seCoord = 2 * i + 4 * self.size[0] * j + 2 * self.size[0] + const + 1
+                        writeCoords(seCoord)
+
+        X, Y, Z, XX, YY, ZZ = ([] for i in range(6))
+        # Write corner x,y coordinates for top, then bottom of entire i,j cell layer
+        for layer in range(2):
+            for k in range(self.size[2]):
+                y = 0
+                for j in range(self.size[1]):
+                    # NW-T and NE-T corners
+                    writeCorners()
+                    y += float(self.jWidths[j])
+                    # SW-T and SE-T corners
+                    writeCorners()
+
+        # Write z-coordinates from ZCORN
+        # TODO: make this consistent with Trevor's style of doing these operations
+        for line in fp:
+            item = line.split()
+            if item[0][0] != "*":
+                for zz in item:
+                    if "*" in zz:
+                        item = zz.split("*")
+                        for i in range(0,int(item[0])):
+                            Z.append(float(item[1]))
+                    else:
+                        Z.append(float(zz))
+            else:
+                break
+
+        self.GridType = "vtkStructuredGrid"
+        self.Grid = vtk.vtkStructuredGrid()
+        self.Grid.SetDimensions(self.size[0]+1, self.size[1]+1, self.size[2]+1)
+        const = 0
+        for k in range(self.size[2]):
+            buildLayer()
+            if k == self.size[2] - 1:
+                const += self.size[0] * self.size[1] * 4
+                buildLayer()
+                break
+            else:
+                const += self.size[0] * self.size[1] * 8
+
+        #vtk_points = pointsToVTK("./SACROC_CMG_VTK", Xtemp, Ytemp, Ztemp, data={"test": dat})
+        vtk_points = vtk.vtkPoints()
+        for point in range(len(XX)) :
+            vtk_points.InsertNextPoint( XX[point], YY[point], ZZ[point])
+        print(vtk_points)
+        self.Grid.SetPoints(vtk_points)
+
+
+    def buildGrid(self, plot=False):
+        pass
+
+    def buildActiveCells(self, fp):
+        self.ActiveCells = []
+        for line in fp:
+            item = line.split()
+            # TODO: make a genereic stopping condition
+            if item[0] != "**$":
+                for zz in item:
+                    if "*" in zz:
+                        item = zz.split("*")
+                        for i in range(0, int(item[0])):
+                            self.ActiveCells.append(int(item[1]))
+                    else:
+                        self.ActiveCells.append(int(zz))
+            else:
+                break
+        self.ActiveCells = np.array(self.ActiveCells)
+        self.ActiveCells = np.reshape(self.ActiveCells, (self.size[0], self.size[1], self.size[2]), order="F")
+
+    def buildZGrid(self, plot=False):
+        pass
+
+    # 'stop' refers to the CMG keyword that signals the end
+    #  of the desired attribute property section
+    def readProperty(self, fname, attr_name, stop):
+        """ Reads a single property from a file, for time series or multiple properties
+            you need to build on this
+        """
+        with open(fname, "r") as fp:
+            for line in fp:
+                item = line.split()
+                if len(item) > 0:
+                    if item[0] == attr_name:
+                        break
+
+            data = []
+            for line in fp:
+                item = line.split()
+                # TODO: make sure this stopping criteria '**$' is valid for all CMG files
+                # TODO: otherwise, allow user to input stopping string
+                if item[0] != stop:
+                    for attr in item:
+                        if "*" in attr:
+                            item = attr.split("*")
+                            for i in range(0, int(item[0])):
+                                data.append(float(item[1]))
+                        else:
+                            data.append(float(attr))
+                else:
+                    break
+        data = np.array(data)
+        data = np.reshape(data, (self.size[0], self.size[1], self.size[2]), order="F")
+
+        # Add to VTK grid
+        ac = vtk.vtkDoubleArray()
+        ac.SetName(attr_name)
+        for iac in data.flatten(order='F'):
+            ac.InsertNextTuple1(iac)
+        self.Grid.GetCellData().AddArray(ac)
+
+
+    # Under development (doesn't do anything right now)
+    def readOuputProperty(self, fname, attr_name):
+        # Set up dictionary for attr_name
+        # Doing so will allow us to read attr_name values for all time steps
+        self.attr_name = {}
+        i = 1
+        with open(fname, "r") as fp:
+            for line in fp:
+                item = line.split()
+                if len(item) > 0:
+                    if item[0] == 'Time':
+                        time = item[2]
+                    attr = line.replace(" ", "").strip()
+                    if attr == attr_name:
+                        if time not in self.attr_name.keys():
+                            self.attr_name[time] = []
+                            break
+
+            layers = {}
+            propIndices = []
+            I,J,K
+            for line in fp:
+                item = line.split()
+                if len(item) > 0:
+
+                    if item[0] == 'Plane':
+                        K = item[3]
+                        layers[K] = {}
+
+                    if item[0] == 'I':
+                        prevDigit = False
+                        for i in range(len(line)):
+                            if line[i].isdigit():
+                                if not prevDigit:
+                                    propIndices.append(i)
+                                    prevDigit = True
+                            else:
+                                prevDigit = False
+
+                    # Check if there are any missing values in J line
+                    skipItem = []
+                    if item[0] == 'J=':
+                        J = item[1]
+                        numItems = len(item)
+                        for i in range(len(propIndices)):
+                            if line(propIndices[i]) == ' ':
+                                skipItem.append(i)
+
+                        # if len(item) > 4:
+                        #     if item[4] == 'All':
+                        #         print(item[7])
+                        # else:
+                        #     pass
