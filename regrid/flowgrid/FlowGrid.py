@@ -807,20 +807,33 @@ class CMG(FlowGrid):
                         self.gridType = item[1]
                         # i,j,k
                         self.size = np.array(item[2:5], dtype=int)
-                    # Here we assume that DI IVAR comes before DJ JVAR
-                    #   Add support for both cases?
-                    if item[0] == "DI":
-                        if item[1] == "IVAR":
-                            self.iWidths += item[2:]
-                            break
-                        elif item[1] == "CON":
-                            pass
+                        break
+
+            # Here we assume that DI IVAR comes before DJ JVAR
+            #   Add support for both cases?
+            for line in fp:
+                item = line.split()
+                if item[0] == "DI" or item[0] == "*DI":
+                    if item[1] == "IVAR" or item[1] == "*IVAR":
+                        self.iWidths += item[2:]
+                        break
+                    elif item[1] == "CON":
+                        pass
 
             # Read DI
             for line in fp:
                 item = line.split()
                 if item[0] != "DJ":
-                    self.iWidths += item
+                    if item[0][0] != "*":
+                        for zz in item:
+                            if "*" in zz:
+                                item = zz.split("*")
+                                for i in range(0, int(item[0])):
+                                    self.iWidths.append(item[1])
+                            else:
+                                self.iWidths.append(zz)
+                    else:
+                        break
                 else:
                     self.jWidths += item[2:]
                     break
@@ -828,12 +841,40 @@ class CMG(FlowGrid):
             # Read DJ
             for line in fp:
                 item = line.split()
+
+                # CHANGE THIS DEPENDING ON GRID TYPE
+                # if item[0] != "DK":
+
                 if item[0] != "ZCORN":
-                    self.jWidths += item
+                    if item[0][0] != "*":
+                        for zz in item:
+                            if "*" in zz:
+                                item = zz.split("*")
+                                for i in range(0, int(item[0])):
+                                    self.jWidths.append(item[1])
+                            else:
+                                self.jWidths.append(zz)
+                    else:
+                        break
                 else:
                     self.jWidths += item[2:]
                     break
+
+            def readDK():
+                pass
+
             self.calcCoords(fp)
+
+            # # Read COORD
+            # for line in fp:
+            #     item = line.split()
+            #     if item[0] == '*COORD':
+            #         break
+            # for line in fp:
+            #     item = line.split()
+            #     if item[0][:1] == "**":
+            #         continue
+
 
             # Read NULL
             for line in fp:
@@ -933,7 +974,6 @@ class CMG(FlowGrid):
         vtk_points = vtk.vtkPoints()
         for point in range(len(XX)) :
             vtk_points.InsertNextPoint( XX[point], YY[point], ZZ[point])
-        print(vtk_points)
         self.Grid.SetPoints(vtk_points)
 
 
@@ -944,6 +984,7 @@ class CMG(FlowGrid):
         self.ActiveCells = []
         for line in fp:
             item = line.split()
+            # TODO: make a genereic stopping condition
             # TODO: make a genereic stopping condition
             if item[0] != "**$":
                 for zz in item:
@@ -1000,56 +1041,109 @@ class CMG(FlowGrid):
         self.Grid.GetCellData().AddArray(ac)
 
 
-    # Under development (doesn't do anything right now)
+    # Populates entire K-layer with val
+    def buildConstLayer(self, val):
+        jKeys = np.arange(self.size[1])
+        kLayer = dict((el,[]) for el in jKeys)
+        for j in range(self.size[1]):
+            iRow = []
+            for i in range(self.size[0]):
+                iRow.append(val)
+            kLayer[j] = iRow
+        return kLayer
+
+
+    # This builds a dictionary of a desired attribute for every timestep present in the .out file
+    # This currently assumes that the keyword 'Time' indicates the end of an attribute section
+    # attr_name must be fed in without spaces
     def readOuputProperty(self, fname, attr_name):
         # Set up dictionary for attr_name
-        # Doing so will allow us to read attr_name values for all time steps
-        self.attr_name = {}
-        i = 1
+        # Doing so will allow us to read attr_name values for every time step
+        setattr(self, attr_name, {})
+        #self[attr_name] = {}
+        layers = {}
+        propIndices = []
+        I, J, K = (None,) * 3
+        time = None
+        build = False
+
         with open(fname, "r") as fp:
             for line in fp:
                 item = line.split()
                 if len(item) > 0:
+                    # Find current time step
                     if item[0] == 'Time':
                         time = item[2]
                     attr = line.replace(" ", "").strip()
+                    # Locate attribute name
                     if attr == attr_name:
-                        if time not in self.attr_name.keys():
-                            self.attr_name[time] = []
+                        build = True
+                        layers = {}
+                        propIndices = []
+                        I, J, K = (None,) * 3
+
+                    if build:
+                        if item[0] == 'All':
+                            print(time)
+                            kKeys = np.arange(self.size[2])
+                            grid = dict((el, {}) for el in kKeys)
+                            for k in range(self.size[2]):
+                                kLayer = self.buildConstLayer(item[3])
+                                grid[k] = kLayer
+                            self[attr_name][time] = grid
+                            build = False
                             break
 
-            layers = {}
-            propIndices = []
-            I,J,K
-            for line in fp:
-                item = line.split()
-                if len(item) > 0:
+                        if item[0] == 'Plane':
+                            K = item[3]
+                            layers[K] = {}
 
-                    if item[0] == 'Plane':
-                        K = item[3]
-                        layers[K] = {}
+                        if item[0] == 'I':
+                            propIndices = []
+                            I = item[2:]
+                            prevDigit = False
+                            for i in range(len(line)):
+                                if line[i].isdigit():
+                                    if not prevDigit:
+                                        propIndices.append(i)
+                                        prevDigit = True
+                                else:
+                                    prevDigit = False
 
-                    if item[0] == 'I':
-                        prevDigit = False
-                        for i in range(len(line)):
-                            if line[i].isdigit():
-                                if not prevDigit:
-                                    propIndices.append(i)
-                                    prevDigit = True
-                            else:
-                                prevDigit = False
+                        # Check if there are any missing values in J line
+                        skipItem = []
+                        if item[0] == 'J=':
+                            JIndex = item[1]
+                            J = item[2:]
 
-                    # Check if there are any missing values in J line
-                    skipItem = []
-                    if item[0] == 'J=':
-                        J = item[1]
-                        numItems = len(item)
-                        for i in range(len(propIndices)):
-                            if line(propIndices[i]) == ' ':
-                                skipItem.append(i)
+                            if JIndex not in layers[K].keys():
+                                layers[K][JIndex] = []
 
-                        # if len(item) > 4:
-                        #     if item[4] == 'All':
-                        #         print(item[7])
-                        # else:
-                        #     pass
+                            for i in range(len(propIndices)):
+                                if line[propIndices[i]] == ' ':
+                                    skipItem.append(i)
+
+                            numSkips = 0
+                            for i in range(len(I)):
+                                if i in skipItem:
+                                    layers[K][JIndex].append('NULL')
+                                    numSkips += 1
+                                else:
+                                    layers[K][JIndex].append(J[i-numSkips])
+
+                        # Put entire grid worth of property in dictionary for current time step
+                        if I and J:
+                            if int(I[-1]) == self.size[0] and int(JIndex) == self.size[1] and int(K) == self.size[2]:
+                                if build:
+                                    self[attr_name][time] = layers
+                                    layers = {}
+                                    build = False
+
+            # Our data is currently in dictionary form and must be converted to arrays
+            timeSeriesData = {}
+            for time in self[attr_name].keys():
+                timeSeriesData[time] = []
+                for k in self[attr_name][time].keys():
+                    for j in self[attr_name][time][k].keys():
+                        timeSeriesData[time] += self[attr_name][time][k][j]
+            setattr(self, attr_name, timeSeriesData)
