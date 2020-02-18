@@ -782,7 +782,7 @@ class SUTRA( FlowGrid ):
 
 
 # For converting CMG grid to VTK grid
-# Currently supports corner point grids only
+# Currently supports corner point and cartesian grids
 class CMG(FlowGrid):
     def __init__(self):
         super(CMG, self).__init__()
@@ -1057,36 +1057,63 @@ class CMG(FlowGrid):
 
     # 'stop' refers to the CMG keyword that signals the end
     #  of the desired attribute property section
-    def readProperty(self, fname, attr_name, stop):
-        """ Reads a single property from a file, for time series or multiple properties
-            you need to build on this
-        """
+    # 'stop' is required if 'ALL' keyword is present
+    def readProperty(self, fname, attr_name, stop=None, add=True):
+        typeVal = None
+        val = 0
         with open(fname, "r") as fp:
             for line in fp:
                 item = line.split()
                 if len(item) > 0:
                     if item[0] == attr_name:
+                        if len(item) >= 2:
+                            if item[1] == "*CON":
+                                val = float(item[2])
+                                typeVal = '*CON'
+                            elif item[1] == '*EQUALSI':
+                                attr_I = attr_name[:-1] + 'I'
+                                data = self.readProperty(fname, attr_I, add=False)
+                                if len(item) == 4:
+                                    op = item[2]
+                                    if op == '*':
+                                        data *= float(item[3])
+                                    elif op == '/':
+                                        data /= float(item[3])
+                                    elif op == '+':
+                                        data += float(item[3])
+                                    elif op == '-':
+                                        data -= float(item[3])
+                            elif item[1] == 'ALL':
+                                typeVal = 'ALL'
                         break
 
-            data = []
-            for line in fp:
-                item = line.split()
-                # TODO: make sure this stopping criteria '**$' is valid for all CMG files
-                # TODO: otherwise, allow user to input stopping string
-                if item[0] != stop:
-                    for attr in item:
-                        if "*" in attr:
-                            item = attr.split("*")
-                            for i in range(0, int(item[0])):
-                                data.append(float(item[1]))
-                        else:
-                            data.append(float(attr))
-                else:
-                    break
-        data = np.array(data)
-        data = np.reshape(data, (self.size[0], self.size[1], self.size[2]), order="F")
+            if typeVal == 'ALL':
+                data = []
+                for line in fp:
+                    item = line.split()
+                    if item[0] != stop:
+                        for attr in item:
+                            if "*" in attr:
+                                item = attr.split("*")
+                                for i in range(0, int(item[0])):
+                                    data.append(float(item[1]))
+                            else:
+                                data.append(float(attr))
+                    else:
+                        data = np.array(data)
+                        data = np.reshape(data, (self.size[0], self.size[1], self.size[2]), order="F")
+                        break
+            elif typeVal == '*CON':
+                data = np.full((self.size[0], self.size[1], self.size[2]), val)
 
-        # Add to VTK grid
+
+        if add:
+            self.addToGrid(data, attr_name)
+        return data
+
+
+    # Add data to VTK grid
+    def addToGrid(self, data, attr_name):
         ac = vtk.vtkDoubleArray()
         ac.SetName(attr_name)
         for iac in data.flatten(order='F'):
@@ -1110,7 +1137,7 @@ class CMG(FlowGrid):
     # -This currently assumes that the keyword 'Time' indicates the end of an attribute section
     # -attr_name must be fed in without spaces
     # -If a cell property is empty, then this will set it to null
-    def readOuputProperty(self, fname, attr_name):
+    def readOutputProperty(self, fname, attr_name):
         # Set up dictionary for attr_name
         # Doing so will allow us to read attr_name values for every time step
         setattr(self, attr_name, {})
@@ -1134,7 +1161,9 @@ class CMG(FlowGrid):
                         build = True
                         layers = {}
                         propIndices = []
-                        I, J, K = (None,) * 3
+                        I = None
+                        J = None
+                        K = '1'
 
                     if build:
                         if item[0] == 'All':
@@ -1158,6 +1187,8 @@ class CMG(FlowGrid):
                                 layers[K] = {}
 
                         if item[0] == 'I':
+                            if K == '1' and I is None:
+                                layers[K] = {}
                             J = None
                             propIndices = []
                             I = item[2:]
@@ -1212,7 +1243,6 @@ class CMG(FlowGrid):
             n = 1
             for key in self[attr_name].keys():
                 data = np.array(self[attr_name][key])
-                print(data.size)
                 # data = np.reshape(data, (self.size[0], self.size[1], self.size[2]), order="F")
 
                 ac = vtk.vtkDoubleArray()
@@ -1233,7 +1263,6 @@ class CMG(FlowGrid):
                             iac = float(iac)
                         else:
                             iac = 0
-
 
                     ac.InsertNextTuple1(iac)
                 self.Grid.GetCellData().AddArray(ac)
