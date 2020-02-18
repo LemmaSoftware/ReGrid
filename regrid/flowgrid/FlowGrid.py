@@ -788,9 +788,9 @@ class CMG(FlowGrid):
         super(CMG, self).__init__()
         nx, ny, nz = 0, 0, 0
 
-    # A grid should be loaded using a CMG formatted input file (.dat)
-    # As far as I am aware, the CMG output files (.out) do not contain complete grid information
-    def loadNodes(self, fname):
+    # Builds a corner point grid from a  CMG formatted input file (.dat)
+    # CMG output files (.out) do not always contain complete CP grid information
+    def buildCorner(self, fname):
         self.iWidths = []
         self.jWidths = []
         with open(fname, "r") as fp:
@@ -801,9 +801,8 @@ class CMG(FlowGrid):
             for line in fp:
                 item = line.split()
                 if len(item) > 0:
-                    # Should we be concerned cases with and without *?
+                    # Searches for line of format *GRID *CORNER I J K
                     if item[0] == "GRID" or item[0] == "*GRID":
-                        # Possible grid types are CART, VARI, CORNER, RADIAL
                         self.gridType = item[1]
                         # i,j,k
                         self.size = np.array(item[2:5], dtype=int)
@@ -890,6 +889,65 @@ class CMG(FlowGrid):
             ac.InsertNextTuple1( iac )
         self.Grid.GetCellData().AddArray(ac)
 
+
+    # Builds a cartesian grid from a CMG output file (.out)
+    def buildCart(self, fname):
+        self.iWidths = []
+        self.jWidths = []
+        with open(fname, "r") as fp:
+
+            # Read header
+            for line in fp:
+                item = line.split()
+                if len(item) > 0:
+                    # Searches for line of format *GRID *CART I J K
+                    if item[0] == "GRID" or item[0] == "*GRID":
+                        self.gridType = item[1]
+                        self.size = np.array(item[2:5], dtype=int)
+                        break
+
+            kSpacing = 0
+            depth = 0
+            # Assumes DEPTH is the final keyword describing grid structure
+            for line in fp:
+                item = line.split()
+                # Read DI
+                if item[0] == "DI" or item[0] == "*DI":
+                    if item[1] == "CON" or item[1] == "*CON":
+                        self.X = np.arange(0, float(item[2]) * (self.size[0]+1), float(item[2]))
+                # Read DJ
+                elif item[0] == "DJ" or item[0] == "*DJ":
+                    if item[1] == "CON" or item[1] == "*CON":
+                        self.Y = np.arange(0, float(item[2]) * (self.size[1]+1), float(item[2]))
+                # Read DK
+                elif item[0] == "DK" or item[0] == "*DK":
+                    if item[1] == "CON" or item[1] == "*CON":
+                        kSpacing = float(item[2])
+                # Read DEPTH (assumes of form *DEPTH *TOP I J K depth)
+                elif item[0] == "DEPTH" or item[0] == "*DEPTH":
+                    depth = float(item[5])
+                    self.Z = np.arange(depth, depth-(kSpacing * self.size[2]), -kSpacing)
+                    break
+
+        # Write cell vertex coordinates
+        XX, YY, ZZ = ([] for el in range(3))
+        for k in range(self.size[2]+1):
+            for j in range(self.size[1]+1):
+                XX.extend(self.X)
+                YY.extend([self.Y[j]] * (self.size[0]+1))
+            ZZ.extend([self.Z[k]] * (self.size[0]+1) * (self.size[1]+1))
+
+        # Convert to vtk grid
+        self.GridType = "vtkStructuredGrid"
+        self.Grid = vtk.vtkStructuredGrid()
+        self.Grid.SetDimensions(self.size[0]+1, self.size[1]+1, self.size[2]+1)
+        vtk_points = vtk.vtkPoints()
+        for point in range(len(XX)) :
+            vtk_points.InsertNextPoint( XX[point], YY[point], ZZ[point])
+        self.Grid.SetPoints(vtk_points)
+
+
+    # Helps buildCorner in constructing cell vertex coordinates
     def calcCoords(self, fp):
         # -Convert CMG DI,DJ cell width data to x,y coordinate lists
         # -Write coordinate lists following ZCORN ordering
@@ -977,9 +1035,6 @@ class CMG(FlowGrid):
         self.Grid.SetPoints(vtk_points)
 
 
-    def buildGrid(self, plot=False):
-        pass
-
     def buildActiveCells(self, fp):
         self.ActiveCells = []
         for line in fp:
@@ -999,8 +1054,6 @@ class CMG(FlowGrid):
         self.ActiveCells = np.array(self.ActiveCells)
         self.ActiveCells = np.reshape(self.ActiveCells, (self.size[0], self.size[1], self.size[2]), order="F")
 
-    def buildZGrid(self, plot=False):
-        pass
 
     # 'stop' refers to the CMG keyword that signals the end
     #  of the desired attribute property section
@@ -1041,7 +1094,7 @@ class CMG(FlowGrid):
         self.Grid.GetCellData().AddArray(ac)
 
 
-    # Populates entire K-layer with val
+    # Populates entire K-layer with val (for reading .out property)
     def buildConstLayer(self, val):
         jKeys = np.arange(self.size[1])
         kLayer = dict((el,[]) for el in jKeys)
@@ -1053,9 +1106,10 @@ class CMG(FlowGrid):
         return kLayer
 
 
-    # This builds a dictionary of a desired attribute for every timestep present in the .out file
-    # This currently assumes that the keyword 'Time' indicates the end of an attribute section
-    # attr_name must be fed in without spaces
+    # -This builds a dictionary of a desired attribute for every timestep present in the .out file
+    # -This currently assumes that the keyword 'Time' indicates the end of an attribute section
+    # -attr_name must be fed in without spaces
+    # -If a cell property is empty, then this will set it to null
     def readOuputProperty(self, fname, attr_name):
         # Set up dictionary for attr_name
         # Doing so will allow us to read attr_name values for every time step
@@ -1084,7 +1138,6 @@ class CMG(FlowGrid):
 
                     if build:
                         if item[0] == 'All':
-                            print(time)
                             kKeys = np.arange(self.size[2])
                             grid = dict((el, {}) for el in kKeys)
                             for k in range(self.size[2]):
@@ -1092,13 +1145,20 @@ class CMG(FlowGrid):
                                 grid[k] = kLayer
                             self[attr_name][time] = grid
                             build = False
-                            break
+                            continue
 
                         if item[0] == 'Plane':
                             K = item[3]
-                            layers[K] = {}
+                            if len(item) > 4:
+                                if item[4] == 'All':
+                                    kLayer = self.buildConstLayer(item[7])
+                                    layers[K] = kLayer
+                            else:
+                                I = None
+                                layers[K] = {}
 
                         if item[0] == 'I':
+                            J = None
                             propIndices = []
                             I = item[2:]
                             prevDigit = False
@@ -1139,7 +1199,7 @@ class CMG(FlowGrid):
                                     layers = {}
                                     build = False
 
-            # Our data is currently in dictionary form and must be converted to arrays
+            # Convert layers from dictionary to arrays
             timeSeriesData = {}
             for time in self[attr_name].keys():
                 timeSeriesData[time] = []
@@ -1147,3 +1207,33 @@ class CMG(FlowGrid):
                     for j in self[attr_name][time][k].keys():
                         timeSeriesData[time] += self[attr_name][time][k][j]
             setattr(self, attr_name, timeSeriesData)
+
+            # Add to VTK grid
+            n = 1
+            for key in self[attr_name].keys():
+                data = np.array(self[attr_name][key])
+                print(data.size)
+                # data = np.reshape(data, (self.size[0], self.size[1], self.size[2]), order="F")
+
+                ac = vtk.vtkDoubleArray()
+                ac.SetName(key)
+
+                def isfloat(value):
+                    try:
+                        float(value)
+                        return True
+                    except ValueError:
+                        return False
+
+                for iac in data:
+                    if not iac[0].isdigit():
+                        iac = 0
+                    else:
+                        if isfloat(iac):
+                            iac = float(iac)
+                        else:
+                            iac = 0
+
+
+                    ac.InsertNextTuple1(iac)
+                self.Grid.GetCellData().AddArray(ac)
