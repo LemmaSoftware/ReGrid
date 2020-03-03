@@ -10,7 +10,7 @@ Clone or download the ReGrid package here:
 
 The ReGrid dependencies include numpy, vtk, pyevtk, and matplotlib.  vtk is not (at the moment) compatible with Python 3.8.  
 
-## Example - Build cartesian grid, read porosity
+## Example - Build cartesian grid
 ```python
 grid = FlowGrid.CMG()
 fname_in = 'input_file.dat'
@@ -31,9 +31,9 @@ Build corner point grid from input (.dat) file.
 fname_in = 'input_file.dat'
 grid.buildCorner(fname_in)
 ```
-Read porosity.  The third argument here is the string that signifies the end of the POR property section in the .dat file (this may be different in your .dat file).  This argument tells us when to stop reading in a property and is required if ALL keyword is present next to a property name.  
+Read porosity.   
 ```python
-grid.readProperty(fname_in, '*POR', '**$')
+grid.readProperty(fname_in, '*POR')
 ```
 
 ## Example - Add output property to grid
